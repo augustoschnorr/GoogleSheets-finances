@@ -21,7 +21,8 @@ function identifyInstallment() {
   let description = currentRange.getCell(1, 3).getValue();
   let category = currentRange.getCell(1, 4).getValue();
   let paymentType = currentRange.getCell(1, 5).getValue();
-  let installments = description.split("-")[0].toString().split("/")[1].trim();
+  //let installments = description.split("-")[0].toString().split("/")[1].trim();
+  let installments = description.split("-")[0].trim();
 
   return {
     date,
@@ -33,25 +34,23 @@ function identifyInstallment() {
   };
 }
 
-function getParcelDates(currentSheetName, parcels) {
-  //TODO: Consider the original purchase date here
-  //It'll fix the problem of duplicating data in the first month when the
-  //purchase was on the previous month.
+function getParcelSheets(currentSheetName, parcels) {
   let [currentMonth, currentYear] = currentSheetName.split("-");
   let currentMonthIndex = months.findIndex(s => s == currentMonth);
-  let originalDate = new Date("20" + currentYear, currentMonthIndex, 6);
-  let parcelDates = [];
+  let originalDate = new Date("20" + currentYear, currentMonthIndex);
+  let parcelSheetsNames = [];
 
-  for (let parcel = 0; parcel < parcels; parcel++) {
+  for (let parcel = 1; parcel < parcels; parcel++) {
     let parcelDate = new Date(
       originalDate.getFullYear(),
       originalDate.getMonth() + parcel,
       originalDate.getDay()
-    );
-    parcelDates.push(parcelDate);
+    ); // Using Date to get next month because it handles December -> January
+    // transitioning transparently
+    parcelSheetsNames.push(getSheetNameFromDate(parcelDate));
   }
 
-  return parcelDates;
+  return parcelSheetsNames;
 }
 
 function getSheetNameFromDate(date) {
@@ -92,30 +91,31 @@ function createNewMonthSheets(sheetsToCreate) {
   });
 }
 
-function addParcelToSheets(parcelDates, parcelSheets, expenseInfo) {
-  if (expenseInfo.installments != parcelSheets.length) {
+function addParcelToSheets(parcelSheets, expenseInfo) {
+  let [originalInstallment, totalInstallments] = expenseInfo.installments.split("/")
+
+  if (totalInstallments - 1 != parcelSheets.length) {
     console.log("ERROR: Number of installments is different from the number of months!")
     return -1;
   }
-  for (let i = 1; i < expenseInfo.installments; i++) {
+
+  for (let i = 0; i < parcelSheets.length; i++) {
     // Defining where to write the installment
-    let sheetName = parcelSheets[i];
-    let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+    let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(parcelSheets[i]);
     let dateValues = sheet.getRange("B4:B").getValues();
-    let last = 4 + dateValues.filter(String).length;
-    sheet.setActiveSelection(sheet.getRange("B" + last + ":F" + last));
+    let lastRow = 4 + dateValues.filter(String).length; // getLastRow wouldn't work for
+    // sheets that has very few records (less than templated categories)
+    sheet.setActiveSelection(sheet.getRange("B" + lastRow + ":F" + lastRow));
 
     // Defining the updated description
-    let installment = i + 1;
+    let installment = parseInt(originalInstallment) + i + 1;
     let descr = expenseInfo.description.replace(
-      `1/${expenseInfo.installments}`,
-      `${installment}/${expenseInfo.installments}`
+      `${originalInstallment}/${totalInstallments}`,
+      `${installment}/${totalInstallments}`
     );
 
-    // Defining updated date
-    let newDate = parcelDates[i];
     sheet.getActiveRange().setValues([
-      [newDate, expenseInfo.amount, descr, expenseInfo.category, expenseInfo.paymentType]
+      [expenseInfo.date, expenseInfo.amount, descr, expenseInfo.category, expenseInfo.paymentType]
     ]);
   }
 }
@@ -124,16 +124,14 @@ function addInstallments() {
   let expenseInfo = identifyInstallment()
   let currentSheetName = SpreadsheetApp.getActive().getActiveSheet().getSheetName();
 
-  let parcelDates = getParcelDates(currentSheetName, expenseInfo.installments);
-
-  let parcelSheets = parcelDates.map(getSheetNameFromDate)
+  let parcelSheets = getParcelSheets(currentSheetName, expenseInfo.installments.split("/")[1]);
   let sheetsToCreate = getSheetsToCreate(parcelSheets);
 
   Logger.log(sheetsToCreate);
 
   createNewMonthSheets(sheetsToCreate);
 
-  addParcelToSheets(parcelDates, parcelSheets, expenseInfo);
+  addParcelToSheets(parcelSheets, expenseInfo);
 }
 
 function getRecurrentExpenses() {
