@@ -44,7 +44,7 @@ function getParcelSheets(currentSheetName, parcels) {
     let parcelDate = new Date(
       originalDate.getFullYear(),
       originalDate.getMonth() + parcel,
-      originalDate.getDay()
+      originalDate.getDay() + 1 // handles months with 31 days --'
     ); // Using Date to get next month because it handles December -> January
     // transitioning transparently
     parcelSheetsNames.push(getSheetNameFromDate(parcelDate));
